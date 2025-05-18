@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/nindanaoto/painless.git
+revision = head
+directory = painless
+
+[provide]
+painless_lib = painless_lib
