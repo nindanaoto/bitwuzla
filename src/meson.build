@@ -55,7 +55,36 @@ endif
 # symfpu headers
 symfpu_dep = dependency('symfpu', include_type: 'system', required: true)
 
-dependencies = [symfpu_dep, cadical_dep, cms_dep, kissat_dep, gmp_dep]
+# Painless SAT solver
+
+painless_dep = dependency('', required : false) # Initialize as not found
+if get_option('painless')
+  message('Attempting to enable Painless SAT solver support.')
+  # The following options are guesses based on common dependencies in SAT solvers.
+  # Check painless/meson_options.txt or painless/meson.build for actual options.
+  # We try to disable heavy dependencies if Bitwuzla does not need them from Painless.
+  # Example: default_options : ['mpi=disabled', 'openmp=false']
+
+  # When 'painless' option is true, the subproject becomes required.
+  _painless_sub = subproject('painless',
+                             required : true,
+                             default_options : ['mpi=disabled'])
+  if _painless_sub.found() # Should always be true if required: true and no configuration error
+    # Get the painless_lib variable. If not found in subproject, Meson will error out here.
+    _painless_lib = _painless_sub.get_variable('painless_dep_for_users') # This should be the full declare_dependency object
+    if not _painless_lib.found() # Check if the retrieved variable is a 'found' dependency
+        error('Failed to retrieve a valid painless_lib dependency object from subproject.')
+    endif
+    painless_dep = _painless_lib # Use the retrieved dependency object directly
+    message('Painless SAT solver enabled.')
+  else
+    # This case should ideally not be reached if required: true, as Meson would error out earlier.
+    # However, keeping a fallback warning.
+    warning('Painless subproject was required but not found or failed to configure. Painless support disabled.')
+  endif
+endif
+
+dependencies = [symfpu_dep, cadical_dep, cms_dep, kissat_dep, gmp_dep, painless_dep]
 
 cpp_args = []
 if cms_dep.found()
@@ -63,6 +92,9 @@ if cms_dep.found()
 endif
 if kissat_dep.found()
   cpp_args += ['-DBZLA_USE_KISSAT']
+endif
+if painless_dep.found()
+  cpp_args += ['-DBZLA_USE_PAINLESS']
 endif
 
 # ---
@@ -97,6 +129,9 @@ if cms_dep.found()
 endif
 if kissat_dep.found()
   license_text += '\n\n  Kissat\n  https://github.com/arminbiere/kissat'
+endif
+if painless_dep.found()
+  license_text += '\\n\\n  Painless\\n  https://github.com/nindanaoto/painless'
 endif
 license_text += '\n\n  SymFPU\n  https://github.com/martin-cs/symfpu'
 license_text = license_text.replace('\n', '\\n').replace('"', '\\"')
@@ -241,9 +276,13 @@ sources = files([
   'type/type_data.cpp',
   'type/type_manager.cpp',
 ])
+if painless_dep.found()
+  sources += files('sat/painless.cpp')
+endif
 
 # Public header include directory
 bitwuzla_inc = include_directories('../include', 'lib')
+
 
 bitwuzla_lib = library('bitwuzla',
                       sources + git_config_h,
