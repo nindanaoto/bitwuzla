@@ -38,6 +38,9 @@ class Painless : public SatSolver
   void configure_terminator(Terminator *terminator) override;
   const char *get_name() const override { return "Painless"; }
   const char *get_version() const override;
+private:
+  std::vector<simpleClause> initClause;
+  unsigned int numVars = 0;
 };
 
 }  // namespace bzla::sat

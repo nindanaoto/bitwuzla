@@ -32,9 +32,11 @@ Painless::~Painless() {}
 void
 Painless::add(int32_t lit)
 {
-  static SimpleClause clause;
-  if(lit)
+  static simpleClause clause;
+  if(lit){
     clause.push_back(lit);
+    if(lit > numVars) numVars = lit;
+  }
   else{
     //end of clause
     initClause.push_back(clause); // register
