@@ -80,9 +80,79 @@ Painless::fixed(int32_t lit)
 Result
 Painless::solve()
 {
-  SatResult res = painless_solve(d_solver);
-  if (res == SatResult::SAT) return Result::SAT;
-  if (res == SatResult::UNSAT) return Result::UNSAT;
+  // Init timeout detection before starting the solvers and sharers
+	std::unique_lock<std::mutex> lock(mutexGlobalEnd);
+	// to make sure that the broadcast is done when main has done its wait
+
+	working = new PortfolioSimple();
+
+	// Launch working
+	std::vector<int> cube;
+
+	std::thread mainWorker(&PortfolioSimple::solve_internal, (PortfolioSimple*)working, std::ref(cube), std::ref(initClause), numVars);
+
+	int wakeupRet = 0;
+
+	if (__globalParameters__.timeout > 0) {
+		auto startTime = SystemResourceMonitor::getRelativeTimeSeconds();
+
+		// Wait until end or __globalParameters__.timeout
+		while ((unsigned int)SystemResourceMonitor::getRelativeTimeSeconds() < __globalParameters__.timeout &&
+			   globalEnding == false) // to manage the spurious wake ups
+		{
+			auto remainingTime = std::chrono::duration<double>(
+				__globalParameters__.timeout - (SystemResourceMonitor::getRelativeTimeSeconds() - startTime));
+			auto wakeupStatus = condGlobalEnd.wait_for(lock, remainingTime);
+
+			LOGDEBUG2("main wakeupRet = %s , globalEnding = %d ",
+					  (wakeupStatus == std::cv_status::timeout ? "timeout" : "notimeout"),
+					  globalEnding.load());
+		}
+
+		condGlobalEnd.notify_all();
+		lock.unlock();
+
+		if ((unsigned int)SystemResourceMonitor::getRelativeTimeSeconds() >= __globalParameters__.timeout &&
+			finalResult ==
+				SatResult::UNKNOWN) // if __globalParameters__.timeout set globalEnding otherwise a solver woke me up
+		{
+			globalEnding = true;
+			finalResult = SatResult::TIMEOUT;
+		}
+	} else {
+		// no __globalParameters__.timeout waiting
+		while (globalEnding == false) // to manage the spurious wake ups
+		{
+			condGlobalEnd.wait(lock);
+		}
+
+		condGlobalEnd.notify_all();
+		lock.unlock();
+	}
+
+	mainWorker.join();
+
+	delete working;
+
+	if (mpi_rank == mpi_winner) {
+		if (finalResult == SatResult::SAT) {
+			logSolution("SATISFIABLE");
+
+			if (__globalParameters__.noModel == false) {
+				logModel(finalModel);
+			}
+		} else if (finalResult == SatResult::UNSAT) {
+			logSolution("UNSATISFIABLE");
+		} else // if __globalParameters__.timeout or unknown
+		{
+			logSolution("UNKNOWN");
+			finalResult = SatResult::UNKNOWN;
+		}
+
+		LOGSTAT("Resolution time: %f s", SystemResourceMonitor::getRelativeTimeSeconds());
+	} else finalResult = SatResult::UNKNOWN; /* mpi will be forced to suspend job only by the winner */
+  if (finalResult == SatResult::SAT) return Result::SAT;
+  if (finalResult == SatResult::UNSAT) return Result::UNSAT;
   return Result::UNKNOWN;
 }
 
@@ -98,7 +168,7 @@ Painless::configure_terminator(Terminator* terminator)
 const char *
 Painless::get_version() const
 {
-  return painless_version();
+  return "v1.24.10-dev";
 }
 
 /*------------------------------------------------------------------------*/

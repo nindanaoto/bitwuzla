@@ -67,8 +67,7 @@ if get_option('painless')
 
   # When 'painless' option is true, the subproject becomes required.
   _painless_sub = subproject('painless',
-                             required : true,
-                             default_options : ['mpi=disabled'])
+                             required : true)
   if _painless_sub.found() # Should always be true if required: true and no configuration error
     # Get the painless_lib variable. If not found in subproject, Meson will error out here.
     _painless_lib = _painless_sub.get_variable('painless_dep_for_users') # This should be the full declare_dependency object
