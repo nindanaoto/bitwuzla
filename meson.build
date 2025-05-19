@@ -23,7 +23,8 @@ enable_python = get_option('python')
 # Whether external and system libraries should be statically linked
 build_static = get_option('default_library') == 'static' \
                and get_option('b_sanitize') == 'none' \
-               and not enable_python
+               and not enable_python \
+               and not get_option('painless')
 
 # Configure testing
 if get_option('testing').auto()
